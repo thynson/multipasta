@@ -32,6 +32,13 @@ const constValueChars = [
   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 ]
 
+const ASCII_TAB = 9; // ASCII '\t'
+const ASCII_LF = 10; // ASCII '\n'
+const ASCII_CR = 13; // ASCII '\r'
+const ASCII_SPACE = 32; // ASCII ' '
+const ASCII_COLON = 58; // ASCII ':'
+
+
 export function make() {
   const decoder = new TextDecoder()
   const state = {
@@ -91,29 +98,45 @@ export function make() {
             return error("HeaderTooLarge")
           }
 
-          if (chunk[i] === 58) {
+          if (chunk[i] === ASCII_COLON) {
             state.key = concatUint8Array(state.key, chunk.slice(start, i))
             if (state.key.length === 0) {
               return error("InvalidHeaderName")
             }
 
-            if (
-              chunk[i + 1] === 32 &&
-              chunk[i + 2] !== 32 &&
-              chunk[i + 2] !== 9
-            ) {
-              start = i + 2
-              state.state = State.value
-              state.size++
-            } else if (chunk[i + 1] !== 32 && chunk[i + 1] !== 9) {
-              start = i + 1
-              state.state = State.value
-            } else {
-              start = i + 1
-              state.state = State.whitespace
-            }
+            start = i + 1;
 
-            break
+            switch (end - start) {
+              case 0:
+                state.state = State.whitespace
+                continue outer
+              case 1: {
+                const lookahead = chunk[i++];
+                if (lookahead !== ASCII_SPACE && lookahead !== ASCII_TAB) {
+                  state.state = State.value
+                  start = i
+                }
+                continue outer
+              }
+              default: {
+                // we can do at least 2 characters look ahead for possibly skip whitespace state
+                let lookahead = chunk[i++];
+                if (lookahead !== ASCII_SPACE && lookahead !== ASCII_TAB) {
+                  state.state = State.value
+                  start = i
+                  continue outer
+                }
+                lookahead = chunk[i++];
+                if (lookahead !== ASCII_SPACE && lookahead !== ASCII_TAB) {
+                  state.state = State.value
+                  start = i
+                  continue outer
+                }
+                state.state = State.whitespace
+                continue outer
+              }
+
+            }
           } else if (constNameChars[chunk[i]] !== 1) {
             return error("InvalidHeaderName")
           }
@@ -130,7 +153,7 @@ export function make() {
             return error("HeaderTooLarge")
           }
 
-          if (chunk[start] !== 32 && chunk[start] !== 9) {
+          if (chunk[start] !== ASCII_SPACE && chunk[start] !== ASCII_TAB) {
             state.state = State.value
             break
           }
@@ -151,28 +174,28 @@ export function make() {
             return error("HeaderTooLarge")
           }
 
-          if (chunk[i] === 13 || state.crlf > 0) {
+          if (chunk[i] === ASCII_CR || state.crlf > 0) {
             let byte = chunk[i]
 
-            if (byte === 13 && state.crlf === 0) {
+            if (byte === ASCII_CR && state.crlf === 0) {
               state.crlf = 1
               i++
               state.size++
               byte = chunk[i]
             }
-            if (byte === 10 && state.crlf === 1) {
+            if (byte === ASCII_LF && state.crlf === 1) {
               state.crlf = 2
               i++
               state.size++
               byte = chunk[i]
             }
-            if (byte === 13 && state.crlf === 2) {
+            if (byte === ASCII_CR && state.crlf === 2) {
               state.crlf = 3
               i++
               state.size++
               byte = chunk[i]
             }
-            if (byte === 10 && state.crlf === 3) {
+            if (byte === ASCII_LF && state.crlf === 3) {
               state.crlf = 4
               i++
               state.size++
